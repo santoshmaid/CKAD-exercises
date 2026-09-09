@@ -9,7 +9,7 @@
 
 [Cron Jobs](#cron-jobs)
 
-## Labels and annotations
+## Labels and Annotations
 kubernetes.io > Documentation > Concepts > Overview > Working with Kubernetes Objects > [Labels and Selectors](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors)
 
 ### Create 3 pods with names nginx1,nginx2,nginx3. All of them should have the label app=v1
@@ -47,6 +47,8 @@ kubectl get po --show-labels
 
 ```bash
 kubectl label po nginx2 app=v2 --overwrite
+# or edit the pod yaml
+kubectl edit po nginx2
 ```
 
 </p>
@@ -77,6 +79,22 @@ kubectl get po -l app=v2
 kubectl get po -l 'app in (v2)'
 # or
 kubectl get po --selector=app=v2
+```
+
+</p>
+</details>
+
+### Get 'app=v2' and not 'tier=frontend' pods
+
+<details><summary>show</summary>
+<p>
+
+```bash
+kubectl get po -l app=v2,tier!=frontend
+# or
+kubectl get po -l 'app in (v2), tier notin (frontend)'
+# or
+kubectl get po --selector=app=v2,tier!=frontend
 ```
 
 </p>
@@ -120,6 +138,71 @@ kubectl label po -l app app-
 
 </p>
 </details>
+
+### Annotate pods nginx1, nginx2, nginx3 with "description='my description'" value
+
+<details><summary>show</summary>
+<p>
+
+
+```bash
+kubectl annotate po nginx1 nginx2 nginx3 description='my description'
+
+#or
+
+kubectl annotate po nginx{1..3} description='my description'
+```
+
+</p>
+</details>
+
+### Check the annotations for pod nginx1
+
+<details><summary>show</summary>
+<p>
+
+```bash
+kubectl annotate pod nginx1 --list
+
+# or
+
+kubectl describe po nginx1 | grep -i 'annotations'
+
+# or
+
+kubectl get po nginx1 -o custom-columns=Name:metadata.name,ANNOTATIONS:metadata.annotations.description
+```
+
+As an alternative to using `| grep` you can use jsonPath like `kubectl get po nginx1 -o jsonpath='{.metadata.annotations}{"\n"}'`
+
+</p>
+</details>
+
+### Remove the annotations for these three pods
+
+<details><summary>show</summary>
+<p>
+
+```bash
+kubectl annotate po nginx{1..3} description- owner-
+```
+
+</p>
+</details>
+
+### Remove these pods to have a clean state in your cluster
+
+<details><summary>show</summary>
+<p>
+
+```bash
+kubectl delete po nginx{1..3}
+```
+
+</p>
+</details>
+
+## Pod Placement
 
 ### Create a pod that will be deployed to a Node that has the label 'accelerator=nvidia-tesla-p100'
 
@@ -179,64 +262,94 @@ spec:
 </p>
 </details>
 
-### Annotate pods nginx1, nginx2, nginx3 with "description='my description'" value
+### Create a pod that will be placed on node `node01` using `nodeName`
 
 <details><summary>show</summary>
 <p>
 
+`nodeName` forces the Pod to be bound to a specific node (bypassing the scheduler). For more details, see the official docs: [https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodename](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodename)
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nodename-pod
+spec:
+  nodeName: node01
+  containers:
+  - name: nodename-con
+    image: nginx  
+```
+
+Verify which node it landed on:
 
 ```bash
-kubectl annotate po nginx1 nginx2 nginx3 description='my description'
-
-#or
-
-kubectl annotate po nginx{1..3} description='my description'
+kubectl get pod nodename-pod -o wide
 ```
 
 </p>
 </details>
 
-### Check the annotations for pod nginx1
+### Taint a node with key `tier` and value `frontend` with the effect `NoSchedule`. Then, create a pod that tolerates this taint.
 
 <details><summary>show</summary>
 <p>
 
+Taint a node:
+
 ```bash
-kubectl annotate pod nginx1 --list
-
-# or
-
-kubectl describe po nginx1 | grep -i 'annotations'
-
-# or
-
-kubectl get po nginx1 -o custom-columns=Name:metadata.name,ANNOTATIONS:metadata.annotations.description
+kubectl taint node node1 tier=frontend:NoSchedule # key=value:Effect
+kubectl describe node node1 # view the taints on a node
 ```
 
-As an alternative to using `| grep` you can use jsonPath like `kubectl get po nginx1 -o jsonpath='{.metadata.annotations}{"\n"}'`
+And to tolerate the taint:
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+  tolerations:
+  - key: "tier"
+    operator: "Equal"
+    value: "frontend"
+    effect: "NoSchedule"
+```
 
 </p>
 </details>
 
-### Remove the annotations for these three pods
+### Create a pod that will be placed on node `controlplane`. Use nodeSelector and tolerations.
 
 <details><summary>show</summary>
 <p>
 
 ```bash
-kubectl annotate po nginx{1..3} description-
+vi pod.yaml
 ```
 
-</p>
-</details>
-
-### Remove these pods to have a clean state in your cluster
-
-<details><summary>show</summary>
-<p>
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+  nodeSelector:
+    kubernetes.io/hostname: controlplane
+  tolerations:
+  - key: "node-role.kubernetes.io/control-plane"
+    operator: "Exists"
+    effect: "NoSchedule"
+```
 
 ```bash
-kubectl delete po nginx{1..3}
+kubectl create -f pod.yaml
 ```
 
 </p>
@@ -378,7 +491,7 @@ kubectl describe po nginx-5ff4457d65-nslcl | grep -i image # should be nginx:1.1
 </p>
 </details>
 
-### Do an on purpose update of the deployment with a wrong image nginx:1.91
+### Do an on-purpose update of the deployment with a wrong image nginx:1.91
 
 <details><summary>show</summary>
 <p>
@@ -388,7 +501,7 @@ kubectl set image deploy nginx nginx=nginx:1.91
 # or
 kubectl edit deploy nginx
 # change the image to nginx:1.91
-# vim tip: type (without quotes) '/image' and Enter, to navigate quickly
+# vim tip: type (without quotes) '/image' and press Enter, to navigate quickly
 ```
 
 </p>
@@ -449,7 +562,7 @@ kubectl describe deploy nginx
 </p>
 </details>
 
-### Autoscale the deployment, pods between 5 and 10, targetting CPU utilization at 80%
+### Autoscale the deployment, pods between 5 and 10, targeting CPU utilization at 80%
 
 <details><summary>show</summary>
 <p>
@@ -514,7 +627,7 @@ kubectl rollout history deploy nginx --revision=6 # insert the number of your la
 kubectl delete deploy nginx
 kubectl delete hpa nginx
 
-#Or
+# or
 kubectl delete deploy/nginx hpa/nginx
 ```
 </p>
@@ -586,9 +699,11 @@ spec:
     app: my-app
 ```
 
-Test if the deployment was successful:
-```bash
-curl $(kubectl get svc my-app-svc -o jsonpath="{.spec.clusterIP}")
+Test if the deployment was successful from within a Pod:
+```
+# run a wget to the Service my-app-svc
+kubectl run -it --rm --restart=Never busybox --image=gcr.io/google-containers/busybox --command -- wget -qO- my-app-svc
+
 version-1
 ```
 
@@ -636,8 +751,10 @@ spec:
 ```
 
 Observe that calling the ip exposed by the service the requests are load balanced across the two versions:
-```bash
-while sleep 0.1; do curl $(kubectl get svc my-app-svc -o jsonpath="{.spec.clusterIP}"); done
+```
+# run a busyBox pod that will make a wget call to the service my-app-svc and print out the version of the pod it reached.
+kubectl run -it --rm --restart=Never busybox --image=gcr.io/google-containers/busybox -- /bin/sh -c 'while sleep 1; do wget -qO- my-app-svc; done'
+
 version-1
 version-1
 version-1
@@ -646,7 +763,7 @@ version-2
 version-1
 ```
 
-If the v2 is stable, scale it up to 4 replicas and shoutdown the v1:
+If the v2 is stable, scale it up to 4 replicas and shutdown the v1:
 ```
 kubectl scale --replicas=4 deploy my-app-v2
 kubectl delete deploy my-app-v1
@@ -756,48 +873,6 @@ kubectl delete job busybox
 </p>
 </details>
 
-### Create a job but ensure that it will be automatically terminated by kubernetes if it takes more than 30 seconds to execute
-
-<details><summary>show</summary>
-<p>
-
-```bash
-kubectl create job busybox --image=busybox --dry-run=client -o yaml -- /bin/sh -c 'while true; do echo hello; sleep 10;done' > job.yaml
-vi job.yaml
-```
-
-Add job.spec.activeDeadlineSeconds=30
-
-```bash
-apiVersion: batch/v1
-kind: Job
-metadata:
-  creationTimestamp: null
-  labels:
-    run: busybox
-  name: busybox
-spec:
-  activeDeadlineSeconds: 30 # add this line
-  template:
-    metadata:
-      creationTimestamp: null
-      labels:
-        run: busybox
-    spec:
-      containers:
-      - args:
-        - /bin/sh
-        - -c
-        - while true; do echo hello; sleep 10;done
-        image: busybox
-        name: busybox
-        resources: {}
-      restartPolicy: OnFailure
-status: {}
-```
-</p>
-</details>
-
 ### Create the same job, make it run 5 times, one after the other. Verify its status and delete it
 
 <details><summary>show</summary>
@@ -808,7 +883,7 @@ kubectl create job busybox --image=busybox --dry-run=client -o yaml -- /bin/sh -
 vi job.yaml
 ```
 
-Add job.spec.completions=5
+Add job.spec.completions=5 and job.spec.completionMode=Indexed
 
 ```YAML
 apiVersion: batch/v1
@@ -820,6 +895,7 @@ metadata:
   name: busybox
 spec:
   completions: 5 # add this line
+  completionMode: Indexed # add this line
   template:
     metadata:
       creationTimestamp: null
@@ -905,6 +981,48 @@ kubectl delete job busybox
 </p>
 </details>
 
+### Create a job but ensure that it will be automatically terminated by kubernetes if it takes more than 30 seconds to execute
+
+<details><summary>show</summary>
+<p>
+
+```bash
+kubectl create job busybox --image=busybox --dry-run=client -o yaml -- /bin/sh -c 'while true; do echo hello; sleep 10;done' > job.yaml
+vi job.yaml
+```
+
+Add job.spec.activeDeadlineSeconds=30
+
+```bash
+apiVersion: batch/v1
+kind: Job
+metadata:
+  creationTimestamp: null
+  labels:
+    run: busybox
+  name: busybox
+spec:
+  activeDeadlineSeconds: 30 # add this line
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        run: busybox
+    spec:
+      containers:
+      - args:
+        - /bin/sh
+        - -c
+        - while true; do echo hello; sleep 10;done
+        image: busybox
+        name: busybox
+        resources: {}
+      restartPolicy: OnFailure
+status: {}
+```
+</p>
+</details>
+
 ## Cron jobs
 
 kubernetes.io > Documentation > Tasks > Run Jobs > [Running Automated Tasks with a CronJob](https://kubernetes.io/docs/tasks/job/automated-tasks-with-cron-jobs/)
@@ -927,9 +1045,9 @@ kubectl create cronjob busybox --image=busybox --schedule="*/1 * * * *" -- /bin/
 <p>
 
 ```bash
-kubectl get po   # copy the container just created
-kubectl logs <container> # you will see the date and message 
-kubectl delete cj busybox --force #cj stands for cronjob and --force to delete immediately 
+kubectl get po # copy the ID of the pod whose container was just created
+kubectl logs <busybox-***> # you will see the date and message 
+kubectl delete cj busybox # cj stands for cronjob
 ```
 
 </p>
@@ -1037,5 +1155,82 @@ spec:
 status: {}
 ```
 
+</p>
+</details>
+
+### Keep only the last 2 successful and 1 failed runs of a CronJob
+
+<details><summary>show</summary> <p>
+
+Create a CronJob with history limits configured:
+```bash
+kubectl create cronjob history-demo \
+  --image=busybox \
+  --schedule="*/1 * * * *" \
+  --dry-run=client -o yaml \
+  -- /bin/sh -c 'date; echo Hello from history demo' > history-demo.yaml
+```
+
+Edit the file:
+
+```bash
+vi history-demo.yaml
+```
+
+Add the following fields under spec:
+
+```bash
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: history-demo
+spec:
+  schedule: "*/1 * * * *"
+  successfulJobsHistoryLimit: 2   # keep last 2 successful jobs
+  failedJobsHistoryLimit: 1        # keep last 1 failed job
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: history-demo
+            image: busybox
+            args:
+            - /bin/sh
+            - -c
+            - date; echo Hello from history demo
+          restartPolicy: Never
+```
+
+Apply the CronJob:
+```bash
+kubectl apply -f history-demo.yaml
+```
+
+Verify job history behavior:
+
+```bash
+kubectl get cj history-demo
+kubectl get jobs --watch
+```
+
+After several runs, confirm that:
+- Only 2 successful Jobs are kept
+- Only 1 failed Job is kept (if failures occur)
+
+Clean up:
+```bash
+kubectl delete cj history-demo
+```
+</p> </details>
+
+### Create a job from cronjob.
+
+<details><summary>show</summary>
+<p>
+
+```bash
+kubectl create job --from=cronjob/sample-cron-job sample-job
+```
 </p>
 </details>

@@ -5,12 +5,19 @@
 
 [SecurityContext](#securitycontext)
 
-[Requests and Limits](#requests-and-limits)
+[Resource Requests and Limits](#resource-requests-and-limits)
+
+[Limit Ranges](#limit-ranges)
+
+[Resource Quotas](#resource-quotas)
 
 [Secrets](#secrets)
 
 [Service Accounts](#serviceaccounts)
 
+<br>#Tips, export to variable<br>
+<br>export ns="-n secret-ops"</br>
+<br>export do="--dry-run=client -oyaml"</br>
 ## ConfigMaps
 
 kubernetes.io > Documentation > Tasks > Configure Pods and Containers > [Configure a Pod to Use a ConfigMap](https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/)
@@ -306,7 +313,7 @@ status: {}
 </p>
 </details>
 
-## Requests and limits
+## Resource requests and limits
 
 kubernetes.io > Documentation > Tasks > Configure Pods and Containers > [Assign CPU Resources to Containers and Pods](https://kubernetes.io/docs/tasks/configure-pod-container/assign-cpu-resource/)
 
@@ -335,10 +342,10 @@ spec:
     resources:
       requests:
         memory: "256Mi"
-        cpu: 100m
+        cpu: "100m"
       limits:    
         memory: "512Mi"
-        cpu: 200m
+        cpu: "200m"
   dnsPolicy: ClusterFirst
   restartPolicy: Always
 status: {}
@@ -346,6 +353,226 @@ status: {}
 
 </p>
 </details>
+
+## Limit Ranges
+kubernetes.io > Documentation > Concepts > Policies > Limit Ranges (https://kubernetes.io/docs/concepts/policy/limit-range/)
+
+### Create a namespace named limitrange with a LimitRange that limits pod memory to a max of 500Mi and min of 100Mi
+
+<details><summary>show</summary>
+<p>
+
+```bash
+kubectl create ns limitrange
+```
+
+vi 1.yaml
+```YAML
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: ns-memory-limit
+  namespace: limitrange
+spec:
+  limits:
+  - max: # max and min define the limit range
+      memory: "500Mi"
+    min:
+      memory: "100Mi"
+    type: Pod
+```
+
+```bash
+kubectl apply -f 1.yaml
+```
+</p>
+</details>
+
+### Describe the namespace limitrange
+
+<details><summary>show</summary>
+<p>
+
+```bash
+kubectl describe limitrange ns-memory-limit -n limitrange
+```
+</p>
+</details>
+
+### Create an nginx pod that requests 250Mi of memory in the limitrange namespace
+
+<details><summary>show</summary>
+<p>
+
+vi 2.yaml
+```YAML
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: nginx
+  name: nginx
+  namespace: limitrange
+spec:
+  containers:
+  - image: nginx
+    name: nginx
+    resources:
+      requests:
+        memory: "250Mi"
+      limits:
+        memory: "500Mi" # limit has to be specified and be <= limitrange
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+``` 
+
+```bash
+kubectl apply -f 2.yaml
+```
+</p>
+</details>
+
+
+## Resource Quotas
+kubernetes.io > Documentation > Concepts > Policies > Resource Quotas (https://kubernetes.io/docs/concepts/policy/resource-quotas/)
+
+### Create ResourceQuota in namespace `one` with hard requests `cpu=1`, `memory=1Gi` and hard limits `cpu=2`, `memory=2Gi`.
+
+<details><summary>show</summary>
+<p>
+
+Create the namespace:
+```bash
+kubectl create ns one
+```
+
+Create the ResourceQuota
+```bash
+vi rq-one.yaml
+```
+
+```YAML
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: my-rq
+  namespace: one
+spec:
+  hard:
+    requests.cpu: "1"
+    requests.memory: 1Gi
+    limits.cpu: "2"
+    limits.memory: 2Gi
+```
+
+```bash
+kubectl apply -f rq-one.yaml
+```
+
+or
+```bash
+kubectl create quota my-rq --namespace=one --hard=requests.cpu=1,requests.memory=1Gi,limits.cpu=2,limits.memory=2Gi
+```
+</p>
+</details>
+
+### Attempt to create a pod with resource requests `cpu=2`, `memory=3Gi` and limits `cpu=3`, `memory=4Gi` in namespace `one`
+
+<details><summary>show</summary>
+<p>
+
+```bash
+vi pod.yaml
+```
+
+```YAML
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: nginx
+  name: nginx
+  namespace: one
+spec:
+  containers:
+  - image: nginx
+    name: nginx
+    resources:
+      requests:
+        memory: "3Gi"
+        cpu: "2"
+      limits:
+        memory: "4Gi"
+        cpu: "3"
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+```
+
+```bash
+kubectl create -f pod.yaml
+```
+
+Expected error message:
+```bash
+Error from server (Forbidden): error when creating "pod.yaml": pods "nginx" is forbidden: exceeded quota: my-rq, requested: limits.cpu=3,limits.memory=4Gi,requests.cpu=2,requests.memory=3Gi, used: limits.cpu=0,limits.memory=0,requests.cpu=0,requests.memory=0, limited: limits.cpu=2,limits.memory=2Gi,requests.cpu=1,requests.memory=1Gi
+```
+</p>
+</details>
+
+### Create a pod with resource requests `cpu=0.5`, `memory=1Gi` and limits `cpu=1`, `memory=2Gi` in namespace `one`
+
+<details><summary>show</summary>
+<p>
+
+```bash
+vi pod2.yaml
+```
+
+```YAML
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: nginx
+  name: nginx
+  namespace: one
+spec:
+  containers:
+  - image: nginx
+    name: nginx
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "0.5"
+      limits:
+        memory: "2Gi"
+        cpu: "1"
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+```
+
+```bash
+kubectl create -f pod2.yaml
+```
+
+Show the ResourceQuota usage in namespace `one`
+```bash
+kubectl get resourcequota -n one
+```
+
+```
+NAME    AGE   REQUEST                                          LIMIT
+my-rq   10m   requests.cpu: 500m/1, requests.memory: 1Gi/1Gi   limits.cpu: 1/2, limits.memory: 2Gi/2Gi
+```
+</p>
+</details>
+
 
 ## Secrets
 
@@ -504,6 +731,131 @@ kubectl exec -it nginx -- env | grep USERNAME | cut -d '=' -f 2 # will show 'adm
 </p>
 </details>
 
+### Create a Secret named 'ext-service-secret' in the namespace 'secret-ops'. Then, provide the key-value pair API_KEY=LmLHbYhsgWZwNifiqaRorH8T as literal.
+
+<details><summary>show</summary>
+<p>
+
+```bash
+export ns="-n secret-ops"
+export do="--dry-run=client -oyaml"
+k create secret generic ext-service-secret --from-literal=API_KEY=LmLHbYhsgWZwNifiqaRorH8T $ns $do > sc.yaml
+k apply -f sc.yaml
+```
+
+</p>
+</details>
+
+### Consuming the Secret. Create a Pod named 'consumer' with the image 'nginx' in the namespace 'secret-ops' and consume the Secret as an environment variable. Then, open an interactive shell to the Pod, and print all environment variables.
+<details><summary>show</summary>
+<p>
+
+```bash
+export ns="-n secret-ops"
+export do="--dry-run=client -oyaml"
+k run consumer --image=nginx $ns $do > nginx.yaml
+vi nginx.yaml
+```
+
+```YAML
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: consumer
+  name: consumer
+  namespace: secret-ops
+spec:
+  containers:
+  - image: nginx
+    name: consumer
+    resources: {}
+    env:
+    - name: API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: ext-service-secret
+          key: API_KEY
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+```
+
+```bash
+k create $ns -f nginx.yaml
+k exec -it $ns consumer -- /bin/sh
+#env
+```
+</p>
+</details>
+
+### Create a Secret named 'my-secret' of type 'kubernetes.io/ssh-auth' in the namespace 'secret-ops'. Define a single key named 'ssh-privatekey', and point it to the file 'id_rsa' in this directory.
+<details><summary>show</summary>
+<p>
+
+```bash
+#Tips, export to variable
+export do="--dry-run=client -oyaml"
+export ns="-n secret-ops"
+
+#if id_rsa file didn't exist.
+ssh-keygen
+
+k create secret generic my-secret $ns --type="kubernetes.io/ssh-auth" --from-file=ssh-privatekey=id_rsa $do > sc.yaml
+k apply -f sc.yaml
+```
+</p>
+</details>
+
+### Create a Pod named 'consumer' with the image 'nginx' in the namespace 'secret-ops', and consume the Secret as Volume. Mount the Secret as Volume to the path /var/app with read-only access. Open an interactive shell to the Pod, and render the contents of the file.
+<details><summary>show</summary>
+<p>
+
+```bash
+#Tips, export to variable
+export ns="-n secret-ops"
+export do="--dry-run=client -oyaml"
+k run consumer --image=nginx $ns $do > nginx.yaml
+vi nginx.yaml
+```
+
+```YAML
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: consumer
+  name: consumer
+  namespace: secret-ops
+spec:
+  containers:
+    - image: nginx
+      name: consumer
+      resources: {}
+      volumeMounts:
+        - name: foo
+          mountPath: "/var/app"
+          readOnly: true
+  volumes:
+    - name: foo
+      secret:
+        secretName: my-secret
+        optional: true
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+```
+
+```bash
+k exec -it $ns consumer -- /bin/sh
+# cat /var/app/ssh-privatekey
+# exit
+```
+</p>
+</details>
+
 ## ServiceAccounts
 
 kubernetes.io > Documentation > Tasks > Configure Pods and Containers > [Configure Service Accounts for Pods](https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/)
@@ -610,9 +962,23 @@ status: {}
 
 ```bash
 kubectl create -f pod.yaml
-kubectl describe pod nginx # will see that a new secret called myuser-token-***** has been mounted
+kubectl get pod nginx -o jsonpath='{.spec.serviceAccountName}' # output: myuser
+
+kubectl exec -it nginx -- cat /var/run/secrets/kubernetes.io/serviceaccount/token # to check if the ServiceAccount token is mounted inside the Pod. Starting from Kubernetes 1.24+, the token is dynamically projected into the Pod
+
 ```
 
+</p>
+</details>
+
+### Generate an API token for the service account 'myuser'
+
+<details><summary>show</summary>
+<p>
+  
+```bash
+kubectl create token myuser
+```
 
 </p>
 </details>

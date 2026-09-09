@@ -35,8 +35,8 @@ kubectl get ep # endpoints
 
 ```bash
 kubectl get svc nginx # get the IP (something like 10.108.93.130)
-kubectl run busybox --rm --image=busybox -it --restart=Never -- sh
-wget -O- IP:80
+kubectl run busybox --rm --image=busybox -it --restart=Never --
+wget -O- [PUT THE POD'S IP ADDRESS HERE]:80
 exit
 ```
 
@@ -122,7 +122,7 @@ kubectl delete pod nginx # Deletes the pod
 
 ```bash
 kubectl create deploy foo --image=dgkanatsios/simpleapp --port=8080 --replicas=3
-kubectl label deployment foo --overwrite app=foo
+kubectl label deployment foo --overwrite app=foo #This is optional since kubectl create deploy foo will create label app=foo by default
 ```
 </p>
 </details>
@@ -181,7 +181,7 @@ kubectl delete deploy foo
 </p>
 </details>
 
-### Create an nginx deployment of 2 replicas, expose it via a ClusterIP service on port 80. Create a NetworkPolicy so that only pods with labels 'access: granted' can access the deployment and apply it
+### Create an nginx deployment of 2 replicas, expose it via a ClusterIP service on port 80. Create a NetworkPolicy so that only pods with labels 'access: granted' can access the pods in this deployment and apply it
 
 kubernetes.io > Documentation > Concepts > Services, Load Balancing, and Networking > [Network Policies](https://kubernetes.io/docs/concepts/services-networking/network-policies/)
 
@@ -229,3 +229,60 @@ kubectl run busybox --image=busybox --rm -it --restart=Never --labels=access=gra
 
 </p>
 </details>
+
+### Create an Ingress resource to expose an existing service using HTTP path routing
+You already have:
+- a Deployment nginx
+- a Service nginx exposing port 80
+
+You want to expose it externally using an Ingress rule.
+> Note that in CKAD, you are not required to install an Ingress Controller, but you must know how to define and troubleshoot an Ingress resource and understand how it connects to a Service.
+
+<details><summary>show</summary> <p>
+Verify the service exists:
+  
+```bash
+kubectl get svc nginx
+```
+Expected:
+- Type: ClusterIP
+- Port: 80
+
+If the Deployment and Service do not already exist in your practice environment, you can create them using the following commands:
+```bash
+kubectl create deployment nginx --image=nginx --port=80
+kubectl expose deployment nginx --port=80 --name=nginx
+```
+
+Create an Ingress resource:
+```bash
+vi ingress.yaml
+```
+```bash
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nginx-ingress
+spec:
+  rules:
+  - host: nginx.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx
+            port:
+              number: 80
+```
+Apply it:
+```bash
+kubectl apply -f ingress.yaml
+```
+
+Verify the Ingress:
+```bash
+kubectl get ingress
+kubectl describe ingress nginx-ingress
+```

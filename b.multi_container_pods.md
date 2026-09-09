@@ -6,7 +6,7 @@
 <details><summary>show</summary>
 <p>
 
-Easiest way to do it is create a pod with a single container and save its definition in a YAML file:
+The easiest way to do it is create a pod with a single container and save its definition in a YAML file:
 
 ```bash
 kubectl run busybox --image=busybox --restart=Never -o yaml --dry-run=client -- /bin/sh -c 'echo hello;sleep 3600' > pod.yaml
@@ -40,7 +40,7 @@ kubectl exec -it busybox -c busybox2 -- /bin/sh
 ls
 exit
 
-# or you can do the above with just an one-liner
+# or you can do the above with just a one-liner
 kubectl exec -it busybox -c busybox2 -- ls
 
 # you can do some cleanup
@@ -50,12 +50,12 @@ kubectl delete po busybox
 </p>
 </details>
 
-### Create a pod with an nginx container exposed on port 80. Add a busybox init container which downloads a page using "wget -O /work-dir/index.html http://neverssl.com/online". Make a volume of type emptyDir and mount it in both containers. For the nginx container, mount it on "/usr/share/nginx/html" and for the initcontainer, mount it on "/work-dir". When done, get the IP of the created pod and create a busybox pod and run "wget -O- IP"
+### Create a pod with an nginx container exposed on port 80. Add a busybox init container which downloads a page using 'echo "Test" > /work-dir/index.html'. Make a volume of type emptyDir and mount it in both containers. For the nginx container, mount it on "/usr/share/nginx/html" and for the initcontainer, mount it on "/work-dir". When done, get the IP of the created pod and create a busybox pod and run "wget -O- IP"
 
 <details><summary>show</summary>
 <p>
 
-Easiest way to do it is create a pod with a single container and save its definition in a YAML file:
+The easiest way to do it is create a pod with a single container and save its definition in a YAML file:
 
 ```bash
 kubectl run box --image=nginx --restart=Never --port=80 --dry-run=client -o yaml > pod-init.yaml
@@ -85,7 +85,7 @@ initContainers:
 - args:
   - /bin/sh
   - -c
-  - wget -O /work-dir/index.html http://neverssl.com/online
+  - echo "Test" > /work-dir/index.html
   image: busybox
   name: box
   volumeMounts:
@@ -108,7 +108,7 @@ spec:
   - args: 
     - /bin/sh 
     - -c 
-    - wget -O /work-dir/index.html http://neverssl.com/online 
+    - echo "Test" > /work-dir/index.html
     image: busybox 
     name: box 
     volumeMounts: 
@@ -135,7 +135,7 @@ kubectl apply -f pod-init.yaml
 kubectl get po -o wide
 
 # Execute wget
-kubectl run box-test --image=busybox --restart=Never -it --rm -- /bin/sh -c "wget -O- IP"
+kubectl run box-test --image=busybox --restart=Never -it --rm -- /bin/sh -c "wget -O- $(kubectl get pod box -o jsonpath='{.status.podIP}')"
 
 # you can do some cleanup
 kubectl delete po box
